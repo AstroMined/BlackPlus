@@ -10,12 +10,16 @@ readme = "README.md"
 python = "^3.10"
 black = "^24.8.0"
 isort = "^5.13.2"
+toml = "^0.10.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.8.0"
 isort = "^5.13.2"
 pytest = "^8.3.3"
 pylint = "^3.3.1"
+mypy = "^1.8.0"
+flake8 = "^7.0.0"
+pytest-cov = "^4.1.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -39,3 +43,17 @@ sections = [
 
 [tool.poetry.scripts]
 blackplus = "blackplus.cli:main"
+
+[tool.pytest.ini_options]
+addopts = "--cov=blackplus --cov-report=term-missing"
+testpaths = ["tests"]
+
+[tool.mypy]
+ignore_missing_imports = true
+strict = true
+
+[tool.pylint.messages_control]
+disable = []
+
+[tool.pylint.format]
+max-line-length = "88"
