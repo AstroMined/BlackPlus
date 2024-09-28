@@ -6,11 +6,15 @@ including docstring processing and code formatting using black and isort.
 """
 
 import ast
-from textwrap import wrap
-from typing import Any, Dict, List
+import tempfile
+import os
+from pathlib import Path
+from textwrap import wrap, dedent
+from typing import Any, Dict, List, Optional
 
 import black
 import isort
+# pylint: disable=import-error
 import toml
 
 
@@ -58,12 +62,12 @@ class DocstringFormatter:
         lines = docstring.split("\n")
         formatted_sections = []
 
-        current_section = None
+        current_section = self._identify_section("")  # Start with summary section
         current_content = []
 
         for line in lines:
             section = self._identify_section(line)
-            if section:
+            if section and section != current_section:
                 if current_section or current_content:
                     formatted_sections.append(
                         self._format_section(current_section, current_content)
@@ -81,7 +85,7 @@ class DocstringFormatter:
         result = "\n\n".join(section for section in formatted_sections if section)
         return result.strip()
 
-    def _identify_section(self, line: str) -> Dict[str, Any]:
+    def _identify_section(self, line: str) -> Optional[Dict[str, Any]]:
         """
         Identify the section based on the line content.
 
@@ -89,10 +93,13 @@ class DocstringFormatter:
         line (str): A line from the docstring.
 
         Returns:
-        Dict[str, Any]: The identified section configuration, or None if not found.
+        Optional[Dict[str, Any]]: The identified section configuration, or None if not found.
         """
+        stripped_line = line.strip()
         for section in self.sections:
-            if section["marker"] in line.strip():
+            if section["marker"] == "" and stripped_line == "":
+                return section
+            if section["marker"] and stripped_line.startswith(section["marker"]):
                 return section
         return None
 
@@ -150,14 +157,15 @@ class DocstringFormatter:
         formatted_content = []
 
         for line in content:
-            if line.strip() == start_marker:
+            stripped_line = line.strip()
+            if stripped_line == start_marker:
                 in_code_block = True
-                formatted_content.append(line.strip())
-            elif line.strip() == end_marker:
+                formatted_content.append(stripped_line)
+            elif stripped_line == end_marker:
                 in_code_block = False
                 formatted_code = self._format_code_snippet("\n".join(code_block))
                 formatted_content.extend(formatted_code.split("\n"))
-                formatted_content.append(line.strip())
+                formatted_content.append(stripped_line)
                 code_block = []
             elif in_code_block:
                 code_block.append(line)
@@ -176,15 +184,31 @@ class DocstringFormatter:
         Returns:
         str: The formatted code snippet.
         """
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".py", delete=False) as temp_file:
+            temp_file.write(dedent(code_snippet))
+            temp_file.flush()
+            temp_file_path = temp_file.name
+
         try:
-            mode = black.Mode()
-            formatted_code = black.format_str(code_snippet, mode=mode)
-            return formatted_code.strip()
+            mode = black.Mode(line_length=88)
+            black.format_file_in_place(Path(temp_file_path), fast=False, mode=mode)
+
+            with open(temp_file_path, "r") as formatted_file:
+                formatted_code = formatted_file.read()
+
+            # Adjust indentation to match the original code snippet
+            original_indent = len(code_snippet) - len(code_snippet.lstrip())
+            formatted_lines = [" " * original_indent + line if line.strip() else line
+                               for line in formatted_code.splitlines()]
+            return "\n".join(formatted_lines)
+
         except black.NothingChanged:
             return code_snippet
         except black.InvalidInput:
             # Handle code that cannot be parsed
             return code_snippet
+        finally:
+            os.unlink(temp_file_path)
 
 
 def run_black(file_path: str, config: Dict[str, Any]) -> None:
@@ -204,13 +228,7 @@ def run_black(file_path: str, config: Dict[str, Any]) -> None:
         target_versions={black.TargetVersion[v.upper()] for v in target_version},
     )
 
-    with open(file_path, "r", encoding="utf-8") as file:
-        content = file.read()
-
-    formatted_content = black.format_file_contents(content, fast=False, mode=mode)
-
-    with open(file_path, "w", encoding="utf-8") as file:
-        file.write(formatted_content)
+    black.format_file_in_place(Path(file_path), fast=False, mode=mode)
 
 
 def run_isort(file_path: str, config: Dict[str, Any]) -> None:
@@ -233,7 +251,7 @@ class DocstringTransformer(ast.NodeTransformer):
     def __init__(self, formatter: DocstringFormatter):
         self.formatter = formatter
 
-    def visit_function_def(self, node):
+    def visit_FunctionDef(self, node):
         """
         Visit a function definition node and format its docstring.
 
@@ -250,7 +268,24 @@ class DocstringTransformer(ast.NodeTransformer):
             node.body[0] = ast.Expr(ast.Str(formatted_docstring))
         return node
 
-    visit_ClassDef = visit_AsyncFunctionDef = visit_function_def
+    def visit_ClassDef(self, node):
+        """
+        Visit a class definition node and format its docstring.
+
+        Parameters:
+        node (ast.ClassDef): The class definition node.
+
+        Returns:
+        ast.ClassDef: The modified class definition node.
+        """
+        self.generic_visit(node)
+        if ast.get_docstring(node):
+            docstring = ast.get_docstring(node)
+            formatted_docstring = self.formatter.format_docstring(docstring)
+            node.body[0] = ast.Expr(ast.Str(formatted_docstring))
+        return node
+
+    visit_AsyncFunctionDef = visit_FunctionDef
 
 
 def format_file(file_path: str, config: Dict[str, Any]) -> None:
@@ -261,10 +296,6 @@ def format_file(file_path: str, config: Dict[str, Any]) -> None:
     file_path (str): Path to the file to be formatted.
     config (Dict[str, Any]): Configuration dictionary.
     """
-    # Run black and isort
-    run_black(file_path, config)
-    run_isort(file_path, config)
-
     # Format docstrings
     with open(file_path, "r", encoding="utf-8") as file:
         tree = ast.parse(file.read())
@@ -275,6 +306,10 @@ def format_file(file_path: str, config: Dict[str, Any]) -> None:
 
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(ast.unparse(modified_tree))
+
+    # Run black and isort
+    run_black(file_path, config)
+    run_isort(file_path, config)
 
 
 def format_files(file_paths: List[str], config: Dict[str, Any]) -> None:

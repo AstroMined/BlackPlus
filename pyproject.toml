@@ -38,7 +38,7 @@ sections = [
     {name = "Summary", marker = "", width = 72},
     {name = "Parameters", marker = "Parameters:", width = 72},
     {name = "Returns", marker = "Returns:", width = 72},
-    {name = "Examples", marker = "Examples:", width = 72, code_example = {start_marker = "```python", end_marker = "```"}},
+    {name = "Example", marker = "Examples:", width = 72, code_example = {start_marker = "```python", end_marker = "```"}},
 ]
 
 [tool.poetry.scripts]
