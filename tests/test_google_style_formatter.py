@@ -355,8 +355,7 @@ def test_multi_paragraph_description(formatter):
 
     Args:
         param1: A parameter with a multi-line description.
-
-            This is the second paragraph of the description.
+            This is the second paragraph of the parameter's description.
         param2: Another parameter with a single-line description.
 
     Returns:
