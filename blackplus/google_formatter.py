@@ -261,9 +261,9 @@ class GoogleDocstringFormatter:
             else:
                 formatted_section += f"{base_indent}    {line}\n"
 
-        # Remove extra newline before the first item in Examples or Notes section
-        if section["name"] in ["examples", "example", "notes", "note"]:
-            formatted_section = formatted_section.replace(f"{base_indent}{section['marker']}\n\n", f"{base_indent}{section['marker']}\n")
+        # Ensure there's a blank line after each section except the last one
+        if section["name"] != "summary":  # Summary already has a blank line
+            formatted_section += f"{base_indent}\n"
 
         return formatted_section.rstrip()  # Remove trailing whitespace
 
