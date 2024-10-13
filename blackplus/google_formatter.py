@@ -254,7 +254,7 @@ class GoogleDocstringFormatter:
                 if line:
                     formatted_section += f"{base_indent}{line}\n"
                 else:
-                    formatted_section += "\n"  # Preserve blank lines in description
+                    formatted_section += f"{base_indent}\n"  # Preserve blank lines in description
             elif section["name"] in ["examples", "example", "notes", "note"]:
                 if line.strip():
                     formatted_section += f"{base_indent}    {line}\n"
@@ -267,7 +267,7 @@ class GoogleDocstringFormatter:
         if section["name"] in ["examples", "example", "notes", "note"]:
             formatted_section = formatted_section.replace(f"{base_indent}{section['marker']}\n\n", f"{base_indent}{section['marker']}\n")
 
-        return formatted_section
+        return formatted_section.rstrip()  # Remove trailing whitespace
 
     def _preserve_indentation(self, content: List[str]) -> List[str]:
         """
