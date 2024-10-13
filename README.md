@@ -7,6 +7,7 @@ BlackPlus is a Python package that extends the functionality of Black to format 
 - Runs Black for code formatting using configurations from `pyproject.toml`
 - Runs isort to sort imports
 - Formats docstrings based on user-defined configurations
+- Supports both Google and NumPy docstring styles
 - Identifies and formats code examples within docstrings using Black
 - Provides a command-line interface for easy use
 
@@ -48,13 +49,24 @@ profile = "black"
 
 [tool.blackplus]
 [tool.blackplus.docstrings]
+style = "google"  # Can be "google" or "numpy"
 sections = [
     {name = "Summary", marker = "", width = 72},
     {name = "Parameters", marker = "Parameters:", width = 72},
     {name = "Returns", marker = "Returns:", width = 72},
-    {name = "Examples", marker = "Examples:", width = 72, code_example = {start_marker = "```python", end_marker = "```"}},
+    {name = "Raises", marker = "Raises:", width = 72},
+    {name = "Yields", marker = "Yields:", width = 72},
+    {name = "Attributes", marker = "Attributes:", width = 72},
+    {name = "Methods", marker = "Methods:", width = 72},
+    {name = "Example", marker = "Examples:", width = 72, code_example = {start_marker = "```python", end_marker = "```"}},
+    {name = "Note", marker = "Note:", width = 72},
+    {name = "Todo", marker = "Todo:", width = 72},
+    {name = "Warning", marker = "Warning:", width = 72},
+    {name = "See Also", marker = "See Also:", width = 72},
 ]
 ```
+
+In the configuration above, you can set the `style` to either "google" or "numpy" to specify the docstring style you prefer. The `sections` list defines the structure and formatting of your docstrings.
 
 ### Python API
 

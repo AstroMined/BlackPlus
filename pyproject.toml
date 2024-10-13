@@ -34,11 +34,20 @@ profile = "black"
 
 [tool.blackplus]
 [tool.blackplus.docstrings]
+style = "google"  # Can be "google" or "numpy"
 sections = [
     {name = "Summary", marker = "", width = 72},
     {name = "Parameters", marker = "Parameters:", width = 72},
     {name = "Returns", marker = "Returns:", width = 72},
+    {name = "Raises", marker = "Raises:", width = 72},
+    {name = "Yields", marker = "Yields:", width = 72},
+    {name = "Attributes", marker = "Attributes:", width = 72},
+    {name = "Methods", marker = "Methods:", width = 72},
     {name = "Example", marker = "Examples:", width = 72, code_example = {start_marker = "```python", end_marker = "```"}},
+    {name = "Note", marker = "Note:", width = 72},
+    {name = "Todo", marker = "Todo:", width = 72},
+    {name = "Warning", marker = "Warning:", width = 72},
+    {name = "See Also", marker = "See Also:", width = 72},
 ]
 
 [tool.poetry.scripts]
