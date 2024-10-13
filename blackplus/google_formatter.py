@@ -72,17 +72,14 @@ class GoogleDocstringFormatter:
         """
         paragraphs = []
         current_paragraph = []
-
         for line in content:
             if line.strip():
-                current_paragraph.append(line)
+                current_paragraph.append(line.strip())
             elif current_paragraph:
                 paragraphs.append(current_paragraph)
                 current_paragraph = []
-
         if current_paragraph:
             paragraphs.append(current_paragraph)
-
         return paragraphs
 
     def format_docstring(self, docstring: str, node: ast.AST) -> str:
@@ -219,7 +216,7 @@ class GoogleDocstringFormatter:
             for i, paragraph in enumerate(paragraphs):
                 if i > 0:
                     formatted_content.append("")  # Add blank line between paragraphs
-                paragraph_text = " ".join(paragraph)  # Join the paragraph lines
+                paragraph_text = " ".join(paragraph)
                 wrapped_lines = self._wrap_paragraph(paragraph_text, width - len(base_indent))
                 formatted_content.extend(wrapped_lines)
         elif section["name"] == "args":
