@@ -213,6 +213,7 @@ class GoogleDocstringFormatter:
             summary = " ".join(content)
             condensed_summary = self._condense_summary(summary)
             formatted_content.append(f'"""{condensed_summary}')
+            formatted_content.append("")  # Add a blank line after summary
         elif section["name"] == "description":
             paragraphs = self._split_into_paragraphs(content)
             for i, paragraph in enumerate(paragraphs):
@@ -251,10 +252,7 @@ class GoogleDocstringFormatter:
             elif i == 0 and docstring_length > 1:
                 formatted_section += f"{base_indent}{line}\n"
             elif section["name"] == "description":
-                if line:
-                    formatted_section += f"{base_indent}{line}\n"
-                else:
-                    formatted_section += f"{base_indent}\n"  # Preserve blank lines in description
+                formatted_section += f"{base_indent}{line}\n"
             elif section["name"] in ["examples", "example", "notes", "note"]:
                 if line.strip():
                     formatted_section += f"{base_indent}    {line}\n"
