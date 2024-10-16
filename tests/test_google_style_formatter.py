@@ -29,9 +29,14 @@ def test_simple_summary_docstring(formatter):
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
     formatted_docstring = formatter.format_docstring(original_docstring, node)
-    expected_docstring = '''"""This is a simple summary docstring."""'''
+    expected_docstring = '''    """This is a simple summary docstring."""'''
+
+    print("DEBUG: Formatted docstring:")
+    print(repr(formatted_docstring))
+    print("DEBUG: Expected docstring:")
+    print(repr(expected_docstring))
     
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_add_missing_components(formatter):
     original_docstring = '''
@@ -50,9 +55,9 @@ def test_add_missing_components(formatter):
     """'''
     
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
     
     assert formatted_docstring == expected_docstring
 
@@ -86,11 +91,11 @@ class SampleClass:
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
     
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_format_function_docstring(formatter):
     original_docstring = '''
@@ -118,11 +123,11 @@ def test_format_function_docstring(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
     
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_long_parameter_description(formatter):
     original_docstring = '''
@@ -144,11 +149,11 @@ def test_long_parameter_description(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 # New test cases for poorly formatted docstrings
 
@@ -177,11 +182,11 @@ def test_poorly_formatted_args_returns(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_poorly_formatted_class_attributes(formatter):
     original_docstring = '''A class with a poorly formatted Attributes section.
@@ -209,11 +214,11 @@ class PoorlyFormattedClass:
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_poorly_formatted_method(formatter):
     original_docstring = '''A method with poorly formatted Args, Returns, and Raises sections.
@@ -243,11 +248,11 @@ def test_poorly_formatted_method(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_poorly_formatted_examples(formatter):
     original_docstring = '''A function with a poorly formatted Examples section.
@@ -283,11 +288,11 @@ def test_poorly_formatted_examples(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_poorly_formatted_notes(formatter):
     original_docstring = '''Calculate the average of a list of numbers.
@@ -317,11 +322,11 @@ def test_poorly_formatted_notes(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_multi_paragraph_description(formatter):
     original_docstring = '''This function has a multi-paragraph description.
@@ -364,11 +369,11 @@ def test_multi_paragraph_description(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 def test_docstring_with_code_block(formatter):
     original_docstring = '''A function with a code block in its docstring.
@@ -414,11 +419,11 @@ def test_docstring_with_code_block(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(formatted_docstring)
+    print(repr(formatted_docstring))
     print("DEBUG: Expected docstring:")
-    print(expected_docstring)
+    print(repr(expected_docstring))
 
-    assert formatted_docstring.strip() == expected_docstring.strip()
+    assert formatted_docstring == expected_docstring
 
 if __name__ == '__main__':
     pytest.main()
