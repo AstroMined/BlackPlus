@@ -1,173 +1,195 @@
-import ast
+"""
+blackplus/google_formatter.py
+
+This module contains the GoogleDocstringFormatter class, which is responsible for
+formatting docstrings according to the Google style guide.
+"""
+
 import re
+import logging
 from textwrap import dedent, wrap
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+
+from blackplus.formatter import BaseDocstringFormatter, ASTInfo
+
+# Global flag to enable/disable logging
+ENABLE_LOGGING = True
+
+def log_debug(message):
+    if ENABLE_LOGGING:
+        logging.debug(message)
+
+@dataclass
+class DocstringSection:
+    name: str
+    marker: str
 
 
-class GoogleDocstringFormatter:
+@dataclass
+class FormatterConfig:
+    style: str
+    sections: List[DocstringSection]
+    max_line_length: int
+    max_summary_length: int
+
+
+class GoogleDocstringFormatter(BaseDocstringFormatter):
     """
-    A class to handle docstring formatting based on user-defined configurations.
+    A class to handle docstring formatting based on user-defined configurations,
+    following the Google style guide.
     """
 
     def __init__(self, config: Dict[str, Any], source_lines: List[str]):
         """
-        Initialize the DocstringFormatter with the provided configuration.
+        Initialize the GoogleDocstringFormatter with the provided configuration.
 
         Args:
             config (Dict[str, Any]): Configuration dictionary for docstring formatting.
             source_lines (List[str]): The source code lines of the file being formatted.
         """
-        print("DEBUG: Initializing GoogleDocstringFormatter")
-        self.config = config.get("docstrings", {})
-        self.style = self.config.get("style", "google")
-        self.sections = self._get_sections()
-        self.source_lines = source_lines
+        log_debug(f"__init__ input - config: {type(config)}, {config}, source_lines: {type(source_lines)}, {source_lines[:5]}...")
+        super().__init__(config, source_lines)
+        self.formatter_config = self._create_formatter_config(config)
         self.current_section = None
-        print(f"DEBUG: Initialization complete. Style: {self.style}")
+        self.section_handlers = {
+            "summary": self._format_summary,
+            "description": self._format_description,
+            "args": self._format_args,
+            "attributes": self._format_attributes,
+            "returns": self._format_returns,
+            "yields": self._format_returns,
+            "raises": self._format_raises,
+            "example": self._format_examples,
+            "examples": self._format_examples,
+            "note": self._preserve_indentation,
+            "notes": self._preserve_indentation,
+        }
 
-    def _get_sections(self) -> List[Dict[str, Any]]:
+    def _create_formatter_config(self, config: Dict[str, Any]) -> FormatterConfig:
+        """
+        Create a FormatterConfig instance from the provided configuration dictionary.
+
+        Args:
+            config (Dict[str, Any]): Configuration dictionary for docstring formatting.
+
+        Returns:
+            FormatterConfig: An instance of FormatterConfig.
+        """
+        log_debug(f"_create_formatter_config input - config: {type(config)}, {config}")
+        result = FormatterConfig(
+            style=config.get("style", "google"),
+            sections=self._get_sections(config),
+            max_line_length=config.get("max_line_length", 72),
+            max_summary_length=config.get("max_summary_length", 80)
+        )
+        log_debug(f"_create_formatter_config output - result: {type(result)}, {result}")
+        return result
+
+    def _get_sections(self, config: Dict[str, Any]) -> List[DocstringSection]:
         """
         Get the sections configuration based on the selected style.
 
+        Args:
+            config (Dict[str, Any]): Configuration dictionary for docstring formatting.
+
         Returns:
-            List[Dict[str, Any]]: List of section configurations.
+            List[DocstringSection]: List of DocstringSection instances.
         """
-        print("DEBUG: Getting sections configuration")
+        log_debug(f"_get_sections input - config: {type(config)}, {config}")
         default_sections = [
-            {"name": "summary", "marker": ""},
-            {"name": "description", "marker": ""},
-            {"name": "args", "marker": "Args:"},
-            {"name": "returns", "marker": "Returns:"},
-            {"name": "yields", "marker": "Yields:"},
-            {"name": "raises", "marker": "Raises:"},
-            {"name": "attributes", "marker": "Attributes:"},
-            {"name": "example", "marker": "Example:"},
-            {"name": "examples", "marker": "Examples:"},
-            {"name": "note", "marker": "Note:"},
-            {"name": "notes", "marker": "Notes:"},
-            {"name": "todo", "marker": "Todo:"},
+            DocstringSection(name="summary", marker=""),
+            DocstringSection(name="description", marker=""),
+            DocstringSection(name="args", marker="Args:"),
+            DocstringSection(name="returns", marker="Returns:"),
+            DocstringSection(name="yields", marker="Yields:"),
+            DocstringSection(name="raises", marker="Raises:"),
+            DocstringSection(name="attributes", marker="Attributes:"),
+            DocstringSection(name="example", marker="Example:"),
+            DocstringSection(name="examples", marker="Examples:"),
+            DocstringSection(name="note", marker="Note:"),
+            DocstringSection(name="notes", marker="Notes:"),
+            DocstringSection(name="todo", marker="Todo:"),
         ]
 
-        sections = self.config.get("sections", default_sections)
-        print(f"DEBUG: Sections configuration: {sections}")
-        return sections
+        result = config.get("sections", default_sections)
+        log_debug(f"_get_sections output - result: {type(result)}, {result}")
+        return result
 
-    def _wrap_paragraph(self, paragraph: str, width: int) -> List[str]:
+    def format_docstring(self, docstring: str, ast_info: ASTInfo) -> str:
         """
-        Wrap a paragraph to the specified width.
-
-        Args:
-            paragraph (str): The paragraph to wrap.
-            width (int): The maximum width for wrapping.
-
-        Returns:
-            List[str]: The wrapped paragraph as a list of lines.
-        """
-        print(f"DEBUG: Wrapping paragraph. Width: {width}")
-        words = paragraph.split()
-        lines = []
-        current_line = words[0]
-
-        for word in words[1:]:
-            if len(current_line) + len(word) + 1 <= width:
-                current_line += " " + word
-            else:
-                lines.append(current_line)
-                current_line = word
-
-        lines.append(current_line)
-        print(f"DEBUG: Wrapped paragraph: {lines}")
-        return lines
-
-    def _split_into_paragraphs(self, content: List[str]) -> List[List[str]]:
-        """
-        Split the content into paragraphs.
-
-        Args:
-            content (List[str]): The content to split.
-
-        Returns:
-            List[List[str]]: A list of paragraphs, where each paragraph is a list of lines.
-        """
-        print("DEBUG: Splitting content into paragraphs")
-        paragraphs = []
-        current_paragraph = []
-        print(f"DEBUG: Content:\n{content}")
-        for line in content:
-            if line.strip():
-                current_paragraph.append(line.strip())
-            elif current_paragraph:
-                paragraphs.append(current_paragraph)
-                current_paragraph = []
-        if current_paragraph:
-            paragraphs.append(current_paragraph)
-        print(f"DEBUG: Paragraphs:\n{paragraphs}")
-        return paragraphs
-
-    def format_docstring(self, docstring: str, node: ast.AST) -> str:
-        """
-        Format the given docstring according to the configuration and node context.
+        Format the given docstring according to the configuration and AST information.
 
         Args:
             docstring (str): The original docstring to be formatted.
-            node (ast.AST): The AST node containing the docstring.
+            ast_info (ASTInfo): The extracted AST information.
 
         Returns:
             str: The formatted docstring.
         """
-        print("DEBUG: Starting docstring formatting")
-        # Remove leading/trailing whitespace and dedent
-        cleaned_docstring = dedent(docstring.strip())
+        log_debug(f"format_docstring input - docstring: {type(docstring)}, {docstring}, ast_info: {type(ast_info)}, {ast_info}")
+        cleaned_docstring = self._clean_docstring(docstring)
+        lines = self._split_into_lines(cleaned_docstring)
         
-        # Split into lines and remove empty lines
-        lines = [line.strip() for line in cleaned_docstring.split("\n") if line.strip()]
-        
-        # Add placeholders for missing components
-        result = self._add_missing_component_placeholders(cleaned_docstring, node)
-        
-        # Re-split the result into lines after adding placeholders
-        lines = [line.strip() for line in result.split("\n") if line.strip()]
+        result = self._add_missing_component_placeholders(cleaned_docstring, ast_info)
+        lines = self._split_into_lines(result)
 
         docstring_length = len(lines)
-        print(f"DEBUG: Docstring length: {docstring_length}")
 
-        formatted_sections = []
-        self.current_section = None
-        current_content = []
-
-        # Add quotes and ensure proper indentation
-        base_indent = self._get_base_indent(node)
-        print(f"DEBUG: Base indent: '{base_indent}'")
+        base_indent = self._get_base_indent(ast_info)
+        formatted_sections = self._format_sections(lines, ast_info, docstring_length, base_indent)
         
-        for i, line in enumerate(lines):
-            section, line_content = self._identify_section(line, node, i == 0)
-            
-            if section and section != self.current_section:
-                if self.current_section or current_content:
-                    formatted_sections.append(
-                        self._format_section(self.current_section, current_content, base_indent, docstring_length, node, is_last_section=(i == len(lines) - 1))
-                    )
-                self.current_section = section
-                current_content = []
-            
-            current_content.extend(line_content)
+        result = self._join_formatted_sections(formatted_sections, docstring_length, base_indent)
 
-        if self.current_section or current_content:
-            formatted_sections.append(
-                self._format_section(self.current_section, current_content, base_indent, docstring_length, node, is_last_section=True)
-            )
+        log_debug(f"format_docstring output - result: {type(result)}, {result}")
+        return result
 
+    def _get_base_indent(self, ast_info: ASTInfo) -> int:
+        """
+        Determine the base indentation for the docstring based on AST information.
+
+        Args:
+            ast_info (ASTInfo): The extracted AST information.
+
+        Returns:
+            int: The number of spaces for base indentation.
+        """
+        log_debug(f"_get_base_indent input - ast_info: {type(ast_info)}, {ast_info}")
+        
+        # If there are no params, attributes, return type, or raises, assume it's a module-level docstring
+        if not ast_info.params and not ast_info.attributes and not ast_info.return_type and not ast_info.raises:
+            base_indent = 0
+        # If there are params or a return type, assume it's a function or method
+        elif ast_info.params or ast_info.return_type:
+            base_indent = 4
+        # If there are attributes, assume it's a class
+        elif ast_info.attributes:
+            base_indent = 4
+        # Default to 4 spaces for any other case
+        else:
+            base_indent = 4
+        
+        log_debug(f"_get_base_indent output - base_indent: {base_indent}")
+        return base_indent
+
+    def _join_formatted_sections(self, formatted_sections: List[str], docstring_length: int, base_indent: int) -> str:
+        """
+        Join formatted sections and add necessary blank lines.
+
+        Args:
+            formatted_sections (List[str]): List of formatted docstring sections.
+            docstring_length (int): The total number of lines in the original docstring.
+            base_indent (int): The base indentation for the docstring.
+
+        Returns:
+            str: The joined and formatted docstring.
+        """
+        log_debug(f"_join_formatted_sections input - formatted_sections: {type(formatted_sections)}, {formatted_sections}, docstring_length: {type(docstring_length)}, {docstring_length}, base_indent: {type(base_indent)}, {base_indent}")
         result = "\n".join(section for section in formatted_sections if section)
-
-        # Ensure there's a blank line after the summary
         lines = result.split("\n")
-        if len(lines) > 1:
-            lines.insert(1, "")
 
-        # Ensure there's a blank line between description and other sections
-        description_end = next((i for i, line in enumerate(lines) if line.strip().startswith("Attributes:") or line.strip().startswith("Args:")), len(lines))
-        if description_end > 2:  # Only add if there's content after the summary
-            lines.insert(description_end, "")
+        # Remove whitespace from lines that contain only whitespace
+        lines = [line if line.strip() else "" for line in lines]
 
         # Ensure there's a blank line at the end of the docstring
         if lines[-1].strip():
@@ -177,182 +199,145 @@ class GoogleDocstringFormatter:
 
         # Add closing quotes
         if docstring_length == 1:
-            print("DEBUG: Single-line docstring")
-            print(f"DEBUG: Result before formatting: {result}")
-            formatted_docstring = f'{result.rstrip()}"""'
+            initial_indent = " " * base_indent + "    "
+            formatted_docstring = f'{initial_indent}"""{result.rstrip()}"""'
         else:
-            formatted_docstring = f'{result}\n{base_indent}"""'
+            initial_indent = " " * base_indent
+            formatted_docstring = f'{initial_indent}"""{result}\n{initial_indent}"""'
 
-        print(f"DEBUG: Formatted docstring:\n{formatted_docstring}")
+        log_debug(f"_join_formatted_sections output - formatted_docstring: {type(formatted_docstring)}, {formatted_docstring}")
         return formatted_docstring
 
-    def _identify_section(self, line: str, node: ast.AST, is_first_line: bool) -> Tuple[Optional[Dict[str, Any]], List[str]]:
+    def _format_sections(self, lines: List[str], ast_info: ASTInfo, docstring_length: int, base_indent: int) -> List[str]:
+        """Format all sections of the docstring."""
+        log_debug(f"_format_sections input - lines: {type(lines)}, {lines}, ast_info: {type(ast_info)}, {ast_info}, docstring_length: {type(docstring_length)}, {docstring_length}, base_indent: {type(base_indent)}, {base_indent}")
+        formatted_sections = []
+        self.current_section = None
+        current_content = []
+
+        # Handle summary and description
+        if lines:
+            summary = self._format_summary([lines[0]])
+            formatted_sections.append("\n".join(summary))
+
+            description_end = next((i for i, line in enumerate(lines[1:], 1) if self._identify_section(line)), len(lines))
+            if description_end > 1:
+                description = self._format_description(lines[1:description_end], self.formatter_config.max_line_length, base_indent)
+                formatted_sections.append("\n".join(description))
+
+            lines = lines[description_end:]
+
+        # Handle other sections
+        for i, line in enumerate(lines):
+            section = self._identify_section(line)
+            
+            if section and section != self.current_section:
+                if self.current_section or current_content:
+                    formatted_section = self._format_section(self.current_section, current_content, docstring_length, ast_info, is_last_section=(i == len(lines) - 1), base_indent=base_indent)
+                    formatted_sections.append("\n".join(formatted_section) if isinstance(formatted_section, list) else formatted_section)
+                self.current_section = section
+                current_content = []
+            
+            current_content.append(line)
+
+        if self.current_section or current_content:
+            formatted_section = self._format_section(self.current_section, current_content, docstring_length, ast_info, is_last_section=True, base_indent=base_indent)
+            formatted_sections.append("\n".join(formatted_section) if isinstance(formatted_section, list) else formatted_section)
+
+        log_debug(f"_format_sections output - formatted_sections: {type(formatted_sections)}, {formatted_sections}")
+        return formatted_sections
+
+    def _identify_section(self, line: str) -> Optional[DocstringSection]:
         """
-        Identify the section based on the line content and node context.
+        Identify the section based on the line content.
 
         Args:
             line (str): A line from the docstring.
-            node (ast.AST): The AST node containing the docstring.
-            is_first_line (bool): Whether this is the first line of the docstring.
 
         Returns:
-            Tuple[Optional[Dict[str, Any]], List[str]]: The identified section configuration and initial content.
+            Optional[DocstringSection]: The identified DocstringSection or None.
         """
-        print(f"DEBUG: Identifying section for line: {line}")
+        log_debug(f"_identify_section input - line: {type(line)}, {line}")
         stripped_line = line.strip()
         
-        # Check if we're already in the Examples or Notes section
-        if self.current_section and self.current_section["name"] in ["examples", "example", "notes", "note"]:
-            # Check if we've encountered a new section marker
-            for section in self.sections:
-                if section["marker"] and stripped_line == section["marker"]:
-                    print(f"DEBUG: New section identified: {section['name']}")
-                    return section, []
-            # If not, this line is part of the current section
-            print(f"DEBUG: Line is part of current section: {self.current_section['name']}")
-            return self.current_section, [stripped_line]
+        for section in self.formatter_config.sections:
+            if section.marker and stripped_line == section.marker:
+                log_debug(f"_identify_section output - section: {type(section)}, {section}")
+                return section
         
-        # Check for section markers
-        for section in self.sections:
-            if section["marker"] and stripped_line == section["marker"]:
-                print(f"DEBUG: Section identified by marker: {section['name']}")
-                return section, []
-        
-        # If no specific section is identified, it's either summary, description, or part of the current section
-        summary_section = next((section for section in self.sections if section["name"] == "summary"), {"name": "summary", "marker": ""})
-        description_section = next((section for section in self.sections if section["name"] == "description"), {"name": "description", "marker": ""})
-        
-        if is_first_line:
-            print("DEBUG: First line identified as summary")
-            return summary_section, [stripped_line]
-        elif self.current_section:
-            if self.current_section["name"] in ["args", "attributes", "raises", "returns", "yields"]:
-                print(f"DEBUG: Line is part of current section: {self.current_section['name']}")
-                return self.current_section, [stripped_line]
-            else:
-                print("DEBUG: Line identified as description")
-                return description_section, [stripped_line]
-        else:
-            print("DEBUG: Line identified as description")
-            return description_section, [stripped_line]
+        log_debug("_identify_section output - None")
+        return None
 
-    def _format_section(self, section: Dict[str, Any], content: List[str], base_indent: str, docstring_length: int, node: ast.AST, is_last_section: bool) -> str:
+    def _format_section(self, section: Optional[DocstringSection], content: List[str], docstring_length: int, ast_info: ASTInfo, is_last_section: bool, base_indent: int) -> str:
         """
         Format a section of the docstring.
 
         Args:
-            section (Dict[str, Any]): The section configuration.
+            section (Optional[DocstringSection]): The section configuration.
             content (List[str]): The content of the section.
-            base_indent (str): The base indentation for the docstring.
             docstring_length (int): The total number of lines in the docstring.
-            node (ast.AST): The AST node containing the docstring.
+            ast_info (ASTInfo): The extracted AST information.
             is_last_section (bool): Whether this is the last section in the docstring.
+            base_indent (int): The base indentation for the docstring.
 
         Returns:
             str: The formatted section.
         """
-        print(f"DEBUG: Formatting section: {section['name'] if section else 'None'}")
-        if not section:  # Handle case with no identified section
-            return "\n".join(content)
+        log_debug(f"_format_section input - section: {type(section)}, {section}, content: {type(content)}, {content}, docstring_length: {type(docstring_length)}, {docstring_length}, ast_info: {type(ast_info)}, {ast_info}, is_last_section: {type(is_last_section)}, {is_last_section}, base_indent: {type(base_indent)}, {base_indent}")
+        if not section:
+            result = self._format_description(content, self.formatter_config.max_line_length, base_indent)
+            log_debug(f"_format_section output (no section) - result: {type(result)}, {result}")
+            return result
 
-        formatted_content = []
-        width = self.config.get("max_line_length", 72)
-
-        if section["marker"]:
-            formatted_content.append(section["marker"])
-        
-        if section["name"] == "summary":
-            summary = " ".join(content)
-            condensed_summary = self._condense_summary(summary)
-            formatted_content.append(f'"""{condensed_summary}')
-            if docstring_length > 1:
-                formatted_content.append("")  # Add a blank line after the summary only for multi-line docstrings
-        elif section["name"] == "description":
-            paragraphs = self._split_into_paragraphs(content)
-            for i, paragraph in enumerate(paragraphs):
-                if i > 0:
-                    formatted_content.append("")  # Add blank line between paragraphs
-                print(f"DEBUG: Paragraph:\n{paragraph}")
-                paragraph_text = " ".join(paragraph)
-                print(f"DEBUG: Paragraph text:\n{paragraph_text}")
-                wrapped_lines = self._wrap_paragraph(paragraph_text, width - len(base_indent))
-                print(f"DEBUG: Wrapped lines:\n{wrapped_lines}")
-                formatted_content.extend(wrapped_lines)
-        elif section["name"] == "args":
-            param_info = self._get_param_info(node)
-            formatted_params = self._format_args(content, param_info, width)
-            formatted_content.extend(formatted_params)
-        elif section["name"] == "attributes":
-            attr_info = self._get_attr_info(node)
-            formatted_attrs = self._format_attributes(content, attr_info, width)
-            formatted_content.extend(formatted_attrs)
-        elif section["name"] in ["raises"]:
-            for line in content:
-                wrapped_lines = self._wrap_paragraph(line.strip(), width - 8)
-                formatted_content.extend(wrapped_lines)
-        elif section["name"] in ["returns", "yields"]:
-            return_type = self._get_return_type(node)
-            formatted_returns = self._format_returns(content, return_type, width)
-            formatted_content.extend(formatted_returns)
-        elif section["name"] in ["examples", "example", "notes", "note"]:
-            formatted_content.extend(self._preserve_indentation(content))
+        handler = self.section_handlers.get(section.name, self._format_generic_section)
+        if section.name in ["args", "attributes", "returns", "yields", "raises"]:
+            formatted_content = handler(content, ast_info)
         else:
-            for line in content:
-                wrapped_lines = self._wrap_paragraph(line.strip(), width - 4)
-                formatted_content.extend(wrapped_lines)
+            formatted_content = handler(content)
 
+        result = self._apply_indentation(formatted_content, section, docstring_length, is_last_section, base_indent)
+        log_debug(f"_format_section output - result: {type(result)}, {result}")
+        return result
+
+    def _apply_indentation(self, formatted_content: List[str], section: DocstringSection, docstring_length: int, is_last_section: bool, base_indent: int) -> str:
+        """Apply indentation to the formatted content."""
+        log_debug(f"_apply_indentation input - formatted_content: {type(formatted_content)}, {formatted_content}, section: {type(section)}, {section}, docstring_length: {type(docstring_length)}, {docstring_length}, is_last_section: {type(is_last_section)}, {is_last_section}, base_indent: {type(base_indent)}, {base_indent}")
+        formatted_section = self._indent_section_content(formatted_content, section, docstring_length, base_indent)
+        result = self._add_section_spacing(formatted_section, section, is_last_section, docstring_length)
+        log_debug(f"_apply_indentation output - result: {type(result)}, {result}")
+        return result
+
+    def _indent_section_content(self, formatted_content: List[str], section: DocstringSection, docstring_length: int, base_indent: int) -> str:
+        """Indent the content of a section."""
+        log_debug(f"_indent_section_content input - formatted_content: {type(formatted_content)}, {formatted_content}, section: {type(section)}, {section}, docstring_length: {type(docstring_length)}, {docstring_length}, base_indent: {type(base_indent)}, {base_indent}")
         formatted_section = ""
+        indent = " " * base_indent
         for i, line in enumerate(formatted_content):
             if docstring_length == 1:
-                formatted_section += f"{base_indent}{line}"
-            elif i == 0 and section["name"] == "summary":
-                formatted_section += f"{base_indent}{line}\n"
-            elif section["marker"] and line == section["marker"]:
-                formatted_section += f"{base_indent}{line}\n"
-            elif section["name"] == "description":
-                formatted_section += f"{base_indent}{line}\n"
-            elif section["name"] in ["examples", "example", "notes", "note"]:
-                if line.strip():
-                    formatted_section += f"{base_indent}    {line}\n"
-                else:
-                    formatted_section += f"{base_indent}\n"
+                formatted_section += f"{line}"
+            elif i == 0 and section.name == "summary":
+                formatted_section += f"{indent}{line}\n"
+            elif section.marker and line == section.marker:
+                formatted_section += f"{indent}{line}\n"
             else:
-                formatted_section += f"{base_indent}    {line}\n"
+                formatted_section += f"{indent}    {line}\n"
+        log_debug(f"_indent_section_content output - formatted_section: {type(formatted_section)}, {formatted_section}")
+        return formatted_section
 
-        # Ensure there's a blank line after each section except the last one
+    def _add_section_spacing(self, formatted_section: str, section: DocstringSection, is_last_section: bool, docstring_length: int) -> str:
+        """Add appropriate spacing between sections."""
+        log_debug(f"_add_section_spacing input - formatted_section: {type(formatted_section)}, {formatted_section}, section: {type(section)}, {section}, is_last_section: {type(is_last_section)}, {is_last_section}, docstring_length: {type(docstring_length)}, {docstring_length}")
         if not is_last_section:
-            formatted_section += f"{base_indent}\n"
-        elif is_last_section and section["name"] != "summary" and docstring_length > 1:
-            # Add a blank line at the end of the docstring for multi-line docstrings
-            print("DEBUG: Adding blank line at the end of the docstring")
-            formatted_section += f"{base_indent}\n"
+            formatted_section += "\n"
+        elif is_last_section and section.name != "summary" and docstring_length > 1:
+            formatted_section += "\n"
 
-        # Add an extra newline after the description section
-        if section["name"] == "description" and not is_last_section:
-            formatted_section += f"{base_indent}\n"
+        if section.name in ["args", "returns", "raises", "attributes", "yields", "example", "examples", "note", "notes"]:
+            formatted_section = "\n" + formatted_section + "\n"
 
-        print(f"DEBUG: Formatted section:\n{formatted_section}")
-        return formatted_section.rstrip()
-
-    def _preserve_indentation(self, content: List[str]) -> List[str]:
-        """
-        Preserve the original indentation of the content.
-
-        Args:
-            content (List[str]): The content to preserve.
-
-        Returns:
-            List[str]: The content with preserved indentation.
-        """
-        print("DEBUG: Preserving indentation")
-        preserved_content = []
-        for line in content:
-            if line.strip():
-                preserved_content.append(line)
-            else:
-                preserved_content.append("")
-        print(f"DEBUG: Preserved content:\n{preserved_content}")
-        return preserved_content
+        result = formatted_section.rstrip()
+        log_debug(f"_add_section_spacing output - result: {type(result)}, {result}")
+        return result
 
     def _condense_summary(self, summary: str) -> str:
         """
@@ -364,9 +349,10 @@ class GoogleDocstringFormatter:
         Returns:
             str: The condensed summary.
         """
-        print(f"DEBUG: Condensing summary: {summary}")
-        max_length = self.config.get("max_summary_length", 80)
+        log_debug(f"_condense_summary input - summary: {type(summary)}, {summary}")
+        max_length = self.formatter_config.max_summary_length
         if len(summary) <= max_length:
+            log_debug(f"_condense_summary output (unchanged) - summary: {type(summary)}, {summary}")
             return summary
         
         words = summary.split()
@@ -374,130 +360,142 @@ class GoogleDocstringFormatter:
         current_length = 0
         
         for word in words:
-            if current_length + len(word) + 1 > max_length - 3:  # -3 for the ellipsis
+            if current_length + len(word) + 1 > max_length:
                 break
             condensed.append(word)
             current_length += len(word) + 1
         
-        condensed_summary = " ".join(condensed) + "..."
-        print(f"DEBUG: Condensed summary: {condensed_summary}")
-        return condensed_summary
+        result = " ".join(condensed) + "..."
+        log_debug(f"_condense_summary output - result: {type(result)}, {result}")
+        return result
 
-    def _format_args(self, content: List[str], param_info: Dict[str, str], width: int) -> List[str]:
-        """
-        Format argument descriptions using AST information.
+    def _clean_docstring(self, docstring: str) -> str:
+        """Clean and dedent the docstring."""
+        log_debug(f"_clean_docstring input - docstring: {type(docstring)}, {docstring}")
+        result = dedent(docstring.strip())
+        log_debug(f"_clean_docstring output - result: {type(result)}, {result}")
+        return result
 
-        Args:
-            content (List[str]): The content of the Args section.
-            param_info (Dict[str, str]): Dictionary of parameter names and types from AST.
-            width (int): The maximum line width for wrapping.
+    def _split_into_lines(self, text: str) -> List[str]:
+        """Split text into lines and remove empty lines."""
+        log_debug(f"_split_into_lines input - text: {type(text)}, {text}")
+        result = [line.strip() for line in text.split("\n") if line.strip()]
+        log_debug(f"_split_into_lines output - result: {type(result)}, {result}")
+        return result
 
-        Returns:
-            List[str]: Formatted argument descriptions.
-        """
-        print("DEBUG: Formatting args")
-        formatted_args = []
-        param_descriptions = self._extract_param_descriptions(content, param_info)
+    def _format_summary(self, content: List[str]) -> List[str]:
+        """Format the summary section."""
+        log_debug(f"_format_summary input - content: {type(content)}, {content}")
+        summary = " ".join(content)
+        condensed_summary = self._condense_summary(summary)
+        result = [f'{condensed_summary}']
+        log_debug(f"_format_summary output - result: {type(result)}, {result}")
+        return result
 
-        for param, param_type in param_info.items():
-            desc = param_descriptions.get(param, "NEEDS_DOCUMENTED")
-            desc_paragraphs = desc.split('\n\n')
-            
-            # Clean the first paragraph
-            first_paragraph = self._clean_description(desc_paragraphs[0])
-            
-            if param_type and param_type != "Any":
-                param_line = f"{param} ({param_type}): {first_paragraph}"
-            else:
-                param_line = f"{param}: {first_paragraph}"
-            
-            wrapped_lines = self._wrap_paragraph(param_line, width - 8)
-            formatted_args.append(wrapped_lines[0])
-            for line in wrapped_lines[1:]:
-                formatted_args.append("    " + line)
-            
-            # Process additional paragraphs
-            for paragraph in desc_paragraphs[1:]:
-                formatted_args.append("")  # Add a blank line between paragraphs
-                cleaned_paragraph = self._clean_description(paragraph)
-                wrapped_lines = self._wrap_paragraph(cleaned_paragraph, width - 12)  # Extra indentation for continuation
-                formatted_args.extend(["    " + line for line in wrapped_lines])
+    def _format_description(self, content: List[str], width: int, base_indent: int) -> List[str]:
+        """Format the description section."""
+        log_debug(f"_format_description input - content: {type(content)}, {content}, width: {type(width)}, {width}")
+        formatted_content = []
+        indentation_level = base_indent
+        for paragraph in content:
+            wrapped_lines = wrap(paragraph, width - indentation_level)  # Subtract 4 for indentation
+            formatted_content.extend(wrapped_lines)
+            formatted_content.append("")  # Add a blank line between paragraphs
+        if formatted_content and not formatted_content[-1]:
+            formatted_content.pop()  # Remove the last blank line
+        indentation = " " * indentation_level
+        formatted_content = [f"{indentation}{line}" for line in formatted_content]
+        # Add a blank line at the beginning of the description
+        formatted_content.insert(0, "")
+        log_debug(f"_format_description output - formatted_content: {type(formatted_content)}, {formatted_content}")
+        return formatted_content
 
-        print(f"DEBUG: Formatted args:\n{formatted_args}")
+    def _format_args(self, content: List[str], ast_info: ASTInfo) -> List[str]:
+        """Format the args section."""
+        log_debug(f"_format_args input - content: {type(content)}, {content}, ast_info: {type(ast_info)}, {ast_info}")
+        formatted_args = ["Args:"]  # Add the "Args:" header
+        param_descriptions = self._extract_param_descriptions(content, ast_info.params)
+        formatted_params = self._format_param_like_section(ast_info.params, param_descriptions)
+        formatted_args.extend(formatted_params)
+        log_debug(f"_format_args output - formatted_args: {type(formatted_args)}, {formatted_args}")
         return formatted_args
 
-    def _get_return_type(self, node: ast.AST) -> Optional[str]:
-        print("DEBUG: Getting return type")
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.returns:
-                return_type = ast.unparse(node.returns)
-                print(f"DEBUG: Return type: {return_type}")
-                return return_type
-        print("DEBUG: No return type found")
-        return None
+    def _format_attributes(self, content: List[str], ast_info: ASTInfo) -> List[str]:
+        """Format the attributes section."""
+        log_debug(f"_format_attributes input - content: {type(content)}, {content}, ast_info: {type(ast_info)}, {ast_info}")
+        attr_descriptions = self._extract_attr_descriptions(content, ast_info.attributes)
+        result = self._format_param_like_section(ast_info.attributes, attr_descriptions)
+        # Add the "Attributes:" header
+        result.insert(0, "Attributes:")
+        log_debug(f"_format_attributes output - result: {type(result)}, {result}")
+        return result
 
-    def _format_returns(self, content: List[str], return_type: Optional[str], width: int) -> List[str]:
-        print("DEBUG: Formatting returns")
-        formatted_returns = []
-        if content:
-            desc = self._clean_description(content[0])
-            if return_type:
-                return_line = f"{return_type}: {desc}"
-            else:
-                return_line = desc
-            wrapped_lines = self._wrap_paragraph(return_line, width - 8)
-            formatted_returns.extend(wrapped_lines)
-
-            # Process additional paragraphs
-            for paragraph in content[1:]:
-                formatted_returns.append("")  # Add a blank line between paragraphs
-                cleaned_paragraph = self._clean_description(paragraph)
-                wrapped_lines = self._wrap_paragraph(cleaned_paragraph, width - 8)
-                formatted_returns.extend(["    " + line for line in wrapped_lines])
-        
-        print(f"DEBUG: Formatted returns:\n{formatted_returns}")
-        return formatted_returns
-
-    def _format_attributes(self, content: List[str], attr_info: Dict[str, str], width: int) -> List[str]:
-        """
-        Format attribute descriptions using AST information.
-
-        Args:
-            content (List[str]): The content of the Attributes section.
-            attr_info (Dict[str, str]): Dictionary of attribute names and types from AST.
-            width (int): The maximum line width for wrapping.
-
-        Returns:
-            List[str]: Formatted attribute descriptions.
-        """
-        print("DEBUG: Formatting attributes")
-        formatted_attrs = []
-        attr_descriptions = self._extract_attr_descriptions(content, attr_info)
-
-        for attr, attr_type in attr_info.items():
-            desc = attr_descriptions.get(attr, "NEEDS_DOCUMENTED")
+    def _format_param_like_section(self, items: Dict[str, str], descriptions: Dict[str, str]) -> List[str]:
+        """Format a section that resembles parameters (args or attributes)."""
+        log_debug(f"_format_param_like_section input - items: {type(items)}, {items}, descriptions: {type(descriptions)}, {descriptions}")
+        formatted_items = []
+        for item, item_type in items.items():
+            desc = descriptions.get(item, "NEEDS_DOCUMENTED")
             desc_paragraphs = desc.split('\n\n')
             
-            # Clean the first paragraph
             first_paragraph = self._clean_description(desc_paragraphs[0])
             
-            if attr_type and attr_type != "Any":
-                attr_line = f"{attr} ({attr_type}): {first_paragraph}"
+            if item_type and item_type != "Any":
+                item_line = f"{item} ({item_type}): {first_paragraph}"
             else:
-                attr_line = f"{attr}: {first_paragraph}"
+                item_line = f"{item}: {first_paragraph}"
             
-            wrapped_lines = self._wrap_paragraph(attr_line, width - 8)
-            formatted_attrs.extend(wrapped_lines)
-            
-            # Process additional paragraphs
-            for paragraph in desc_paragraphs[1:]:
-                formatted_attrs.append("")  # Add a blank line between paragraphs
-                cleaned_paragraph = self._clean_description(paragraph)
-                wrapped_lines = self._wrap_paragraph(cleaned_paragraph, width - 8)
-                formatted_attrs.extend(["    " + line for line in wrapped_lines])
+            wrapped_lines = wrap(item_line, self.formatter_config.max_line_length - 8)
+            # Indent all lines after the first line
+            wrapped_lines = [wrapped_lines[0]] + [f"    {line}" for line in wrapped_lines[1:]]
 
-        print(f"DEBUG: Formatted attributes:\n{formatted_attrs}")
-        return formatted_attrs
+            formatted_items.extend(wrapped_lines)
+            
+            for paragraph in desc_paragraphs[1:]:
+                formatted_items.append("")
+                cleaned_paragraph = self._clean_description(paragraph)
+                wrapped_lines = wrap(cleaned_paragraph, self.formatter_config.max_line_length - 12)
+                formatted_items.extend(["    " + line for line in wrapped_lines])
+
+        log_debug(f"_format_param_like_section output - formatted_items: {type(formatted_items)}, {formatted_items}")
+        return formatted_items
+
+    def _format_raises(self, content: List[str], ast_info: ASTInfo) -> List[str]:
+        """Format the raises section."""
+        log_debug(f"_format_raises input - content: {type(content)}, {content}, ast_info: {type(ast_info)}, {ast_info}")
+        formatted_raises = ["Raises:"]
+        for exception in ast_info.raises:
+            desc = next((line for line in content if line.startswith(exception)), f"{exception}: NEEDS_DOCUMENTED")
+            wrapped_lines = wrap(desc.strip(), self.formatter_config.max_line_length - 8)
+            formatted_raises.extend(wrapped_lines)
+        log_debug(f"_format_raises output - formatted_raises: {type(formatted_raises)}, {formatted_raises}")
+        return formatted_raises
+
+    def _format_returns(self, content: List[str], ast_info: ASTInfo) -> List[str]:
+        """Format the returns or yields section."""
+        log_debug(f"_format_returns input - content: {type(content)}, {content}, ast_info: {type(ast_info)}, {ast_info}")
+        formatted_returns = ["Returns:"]
+        if content:
+            desc = self._clean_description(" ".join(content[1:]))  # Skip the "Returns:" line
+            if ast_info.return_type and ast_info.return_type != "Any":
+                return_line = f"{ast_info.return_type}: {desc}"
+            else:
+                return_line = desc
+            wrapped_lines = wrap(return_line, self.formatter_config.max_line_length - 8)
+            formatted_returns.extend(wrapped_lines)
+        
+        log_debug(f"_format_returns output - formatted_returns: {type(formatted_returns)}, {formatted_returns}")
+        return formatted_returns
+
+    def _format_generic_section(self, content: List[str]) -> List[str]:
+        """Format a generic section."""
+        log_debug(f"_format_generic_section input - content: {type(content)}, {content}")
+        formatted_content = []
+        for line in content:
+            wrapped_lines = wrap(line.strip(), self.formatter_config.max_line_length - 8)
+            formatted_content.extend(wrapped_lines)
+        log_debug(f"_format_generic_section output - formatted_content: {type(formatted_content)}, {formatted_content}")
+        return formatted_content
 
     def _extract_param_descriptions(self, content: List[str], param_info: Dict[str, str]) -> Dict[str, str]:
         """
@@ -510,37 +508,10 @@ class GoogleDocstringFormatter:
         Returns:
             Dict[str, str]: Dictionary of parameter names and their descriptions.
         """
-        print("DEBUG: Extracting parameter descriptions")
-        param_descriptions = {}
-        current_param = None
-        current_desc = []
-        in_paragraph = False
-
-        for line in content:
-            stripped_line = line.strip()
-            param_match = next((param for param in param_info.keys() if stripped_line.startswith(param)), None)
-            
-            if param_match:
-                if current_param:
-                    param_descriptions[current_param] = '\n\n'.join(current_desc).strip()
-                current_param = param_match
-                current_desc = [stripped_line[len(param_match):].strip()]
-                in_paragraph = True
-            elif stripped_line == "":
-                if in_paragraph:
-                    current_desc.append("")
-                    in_paragraph = False
-            else:
-                if not in_paragraph:
-                    current_desc.append("")
-                    in_paragraph = True
-                current_desc.append(stripped_line)
-
-        if current_param:
-            param_descriptions[current_param] = '\n\n'.join(current_desc).strip()
-
-        print(f"DEBUG: Extracted parameter descriptions:\n{param_descriptions}")
-        return param_descriptions
+        log_debug(f"_extract_param_descriptions input - content: {type(content)}, {content}, param_info: {type(param_info)}, {param_info}")
+        result = self._extract_item_descriptions(content, param_info.keys())
+        log_debug(f"_extract_param_descriptions output - result: {type(result)}, {result}")
+        return result
 
     def _extract_attr_descriptions(self, content: List[str], attr_info: Dict[str, str]) -> Dict[str, str]:
         """
@@ -553,21 +524,37 @@ class GoogleDocstringFormatter:
         Returns:
             Dict[str, str]: Dictionary of attribute names and their descriptions.
         """
-        print("DEBUG: Extracting attribute descriptions")
-        attr_descriptions = {}
-        current_attr = None
+        log_debug(f"_extract_attr_descriptions input - content: {type(content)}, {content}, attr_info: {type(attr_info)}, {attr_info}")
+        result = self._extract_item_descriptions(content, attr_info.keys())
+        log_debug(f"_extract_attr_descriptions output - result: {type(result)}, {result}")
+        return result
+
+    def _extract_item_descriptions(self, content: List[str], item_names: List[str]) -> Dict[str, str]:
+        """
+        Extract item descriptions from the docstring content.
+
+        Args:
+            content (List[str]): The content of the section.
+            item_names (List[str]): List of item names to extract descriptions for.
+
+        Returns:
+            Dict[str, str]: Dictionary of item names and their descriptions.
+        """
+        log_debug(f"_extract_item_descriptions input - content: {type(content)}, {content}, item_names: {type(item_names)}, {item_names}")
+        item_descriptions = {}
+        current_item = None
         current_desc = []
         in_paragraph = False
 
         for line in content:
             stripped_line = line.strip()
-            attr_match = next((attr for attr in attr_info.keys() if stripped_line.startswith(attr)), None)
+            item_match = next((item for item in item_names if stripped_line.startswith(item)), None)
             
-            if attr_match:
-                if current_attr:
-                    attr_descriptions[current_attr] = '\n\n'.join(current_desc).strip()
-                current_attr = attr_match
-                current_desc = [stripped_line[len(attr_match):].strip()]
+            if item_match:
+                if current_item:
+                    item_descriptions[current_item] = '\n\n'.join(current_desc).strip()
+                current_item = item_match
+                current_desc = [stripped_line[len(item_match):].strip()]
                 in_paragraph = True
             elif stripped_line == "":
                 if in_paragraph:
@@ -579,161 +566,72 @@ class GoogleDocstringFormatter:
                     in_paragraph = True
                 current_desc.append(stripped_line)
 
-        if current_attr:
-            attr_descriptions[current_attr] = '\n\n'.join(current_desc).strip()
+        if current_item:
+            item_descriptions[current_item] = '\n\n'.join(current_desc).strip()
 
-        print(f"DEBUG: Extracted attribute descriptions:\n{attr_descriptions}")
-        return attr_descriptions
+        log_debug(f"_extract_item_descriptions output - item_descriptions: {type(item_descriptions)}, {item_descriptions}")
+        return item_descriptions
 
-    def _clean_description(self, desc: str) -> str:
+    def _clean_description(self, description: str) -> str:
         """
         Clean up the description string by removing leading non-alphanumeric characters.
 
         Args:
-            desc (str): The original description string.
+            description (str): The original description string.
 
         Returns:
             str: The cleaned description string.
         """
-        print(f"DEBUG: Cleaning description: {desc}")
-        cleaned = re.sub(r'^[^a-zA-Z0-9]+', '', desc).strip()
-        print(f"DEBUG: Cleaned description: {cleaned}")
-        return cleaned
+        log_debug(f"_clean_description input - description: {type(description)}, {description}")
+        result = re.sub(r'^[^a-zA-Z0-9]+', '', description).strip()
+        log_debug(f"_clean_description output - result: {type(result)}, {result}")
+        return result
 
-    def _get_param_info(self, node: ast.AST) -> Dict[str, str]:
-        """
-        Extract parameter information from the AST node.
-
-        Args:
-            node (ast.AST): The AST node containing the function definition.
-
-        Returns:
-            Dict[str, str]: A dictionary of parameter names and their types.
-        """
-        print("DEBUG: Getting parameter info")
-        param_info = {}
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for arg in node.args.args:
-                if arg.arg != 'self':
-                    param_type = "Any"
-                    if arg.annotation:
-                        param_type = ast.unparse(arg.annotation)
-                    param_info[arg.arg] = param_type
-        print(f"DEBUG: Parameter info: {param_info}")
-        return param_info
-
-    def _get_attr_info(self, node: ast.AST) -> Dict[str, str]:
-        """
-        Extract attribute information from the AST node.
-
-        Args:
-            node (ast.AST): The AST node containing the class definition.
-
-        Returns:
-            Dict[str, str]: A dictionary of attribute names and their types.
-        """
-        print("DEBUG: Getting attribute info")
-        attr_info = {}
-        if isinstance(node, ast.ClassDef):
-            for stmt in node.body:
-                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
-                    attr_type = "Any"
-                    if stmt.annotation:
-                        attr_type = ast.unparse(stmt.annotation)
-                    attr_info[stmt.target.id] = attr_type
-        print(f"DEBUG: Attribute info: {attr_info}")
-        return attr_info
-
-    def _get_base_indent(self, node: ast.AST) -> str:
-        """
-        Get the base indentation based on the node context.
-
-        Args:
-            node (ast.AST): The AST node containing the docstring.
-
-        Returns:
-            str: The base indentation.
-        """
-        print("DEBUG: Getting base indent")
-        if isinstance(node, ast.Module):
-            return ""
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            indent = self._determine_indent_from_source(node)
-            return indent + "    "
-        elif isinstance(node, ast.ClassDef):
-            return self._determine_indent_from_source(node)
-        else:
-            return self._determine_indent_from_source(node)
-
-    def _determine_indent_from_source(self, node: ast.AST) -> str:
-        """
-        Determine the indentation from the source code.
-
-        Args:
-            node (ast.AST): The AST node containing the docstring.
-
-        Returns:
-            str: The determined indentation.
-        """
-        print("DEBUG: Determining indent from source")
-        if hasattr(node, 'lineno'):
-            line_number = node.lineno - 1
-            if 0 <= line_number < len(self.source_lines):
-                line = self.source_lines[line_number]
-                indent = len(line) - len(line.lstrip())
-                print(f"DEBUG: Determined indent: '{' ' * indent}'")
-                return ' ' * indent
-        
-        print("DEBUG: Could not determine indent, returning empty string")
-        return ""
-
-    def _add_missing_component_placeholders(self, docstring: str, node: ast.AST) -> str:
+    def _add_missing_component_placeholders(self, docstring: str, ast_info: ASTInfo) -> str:
         """
         Add placeholders for missing components in the docstring.
 
         Args:
             docstring (str): The formatted docstring.
-            node (ast.AST): The AST node containing the docstring.
+            ast_info (ASTInfo): The extracted AST information.
 
         Returns:
             str: The docstring with added placeholders for missing components.
         """
-        print("DEBUG: Adding missing component placeholders")
-        components = self._analyze_ast(node)
+        log_debug(f"_add_missing_component_placeholders input - docstring: {type(docstring)}, {docstring}, ast_info: {type(ast_info)}, {ast_info}")
         lines = docstring.split("\n")
         
         new_lines = []
         for line in lines:
             new_lines.append(line)
-            if any(section["marker"] in line for section in self.sections if section["marker"]):
+            if any(section.marker in line for section in self.formatter_config.sections if section.marker):
                 new_lines.append("")  # Add a blank line after each section marker
         
+        components = ["Args", "Returns", "Raises", "Attributes"]
         for component in components:
             if component.lower() not in docstring.lower():
-                if component == "Args":
+                if component == "Args" and ast_info.params:
                     new_lines.append("")
                     new_lines.append("Args:")
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        for arg in node.args.args:
-                            if arg.arg != 'self':
-                                new_lines.append(f"    {arg.arg}: NEEDS_DOCUMENTED")
+                    for arg, arg_type in ast_info.params.items():
+                        new_lines.append(f"    {arg}: NEEDS_DOCUMENTED")
                     new_lines.append("")  # Add a blank line after Args section
-                elif component == "Returns" and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                elif component == "Returns" and ast_info.return_type:
                     new_lines.append("")
                     new_lines.append("Returns:")
                     new_lines.append("    NEEDS_DOCUMENTED")
                     new_lines.append("")  # Add a blank line after Returns section
-                elif component == "Raises":
+                elif component == "Raises" and ast_info.raises:
                     new_lines.append("")
                     new_lines.append("Raises:")
-                    new_lines.append("    NEEDS_DOCUMENTED: NEEDS_DOCUMENTED")
+                    for exception in ast_info.raises:
+                        new_lines.append(f"    {exception}: NEEDS_DOCUMENTED")
                     new_lines.append("")  # Add a blank line after Raises section
-                elif component == "Attributes" and isinstance(node, ast.ClassDef):
+                elif component == "Attributes" and ast_info.attributes:
                     new_lines.append("")
                     new_lines.append("Attributes:")
-                    for stmt in node.body:
-                        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
-                            new_lines.append(f"    {stmt.target.id}: NEEDS_DOCUMENTED")
+                    for attr, attr_type in ast_info.attributes.items():
+                        new_lines.append(f"    {attr}: NEEDS_DOCUMENTED")
                     new_lines.append("")  # Add a blank line after Attributes section
         
         # Remove the last blank line if it exists
@@ -741,40 +639,76 @@ class GoogleDocstringFormatter:
             new_lines.pop()
         
         result = "\n".join(new_lines)
-        print(f"DEBUG: Docstring with added placeholders:\n{result}")
+        log_debug(f"_add_missing_component_placeholders output - result: {type(result)}, {result}")
         return result
 
-    def _analyze_ast(self, node: ast.AST) -> List[str]:
+    def _preserve_indentation(self, content: List[str]) -> List[str]:
         """
-        Analyze the AST node to identify components that should be documented.
+        Preserve the indentation of the original content.
 
         Args:
-            node (ast.AST): The AST node to analyze.
+            content (List[str]): The original content lines.
 
         Returns:
-            List[str]: List of components that should be documented.
+            List[str]: The content with preserved indentation.
         """
-        print("DEBUG: Analyzing AST")
-        components = []
+        log_debug(f"_preserve_indentation input - content: {type(content)}, {content}")
+        if not content:
+            log_debug("_preserve_indentation output - empty list")
+            return []
+
+        # Find the minimum indentation
+        min_indent = min(len(line) - len(line.lstrip()) for line in content if line.strip())
+
+        # Remove the minimum indentation from all lines
+        result = [line[min_indent:] if line.strip() else "" for line in content]
+        result.append("")
+        log_debug(f"_preserve_indentation output - result: {type(result)}, {result}")
+        return result
+
+    def _format_examples(self, content: List[str]) -> List[str]:
+        """
+        Format the examples section of the docstring.
+
+        Args:
+            content (List[str]): The content of the examples section.
+
+        Returns:
+            List[str]: The formatted examples section.
+        """
+        log_debug(f"_format_examples input - content: {type(content)}, {content}")
+        formatted_examples = []
+        examples_header = content[0]
+        in_code_block = False
+        code_block_indent = 0
         
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.args.args:
-                components.append("Args")
+        for line in content[1:]:  # Skip the "Examples:" line
+            stripped_line = line.strip()
             
-            # Check if the function has a return statement
-            has_return = any(isinstance(stmt, ast.Return) and stmt.value is not None for stmt in ast.walk(node))
-            if has_return:
-                components.append("Returns")
+            if stripped_line.startswith(">>>") or stripped_line.startswith("..."):
+                if not in_code_block:
+                    in_code_block = True
+                    code_block_indent = len(line) - len(line.lstrip())
+                formatted_examples.append(line)
+            elif stripped_line.startswith("```") or stripped_line.endswith("```"):
+                in_code_block = not in_code_block
+                formatted_examples.append(line)
+            elif in_code_block:
+                # Preserve indentation for code blocks
+                formatted_examples.append(line[code_block_indent:])
+            else:
+                # Wrap text description
+                wrapped_lines = wrap(stripped_line, self.formatter_config.max_line_length - 8)
+                formatted_examples.extend(wrapped_lines)
             
-            for stmt in node.body:
-                if isinstance(stmt, ast.Raise):
-                    components.append("Raises")
-                    break
+            if not in_code_block and stripped_line:
+                formatted_examples.append("")  # Add a blank line after text description
         
-        elif isinstance(node, ast.ClassDef):
-            has_attributes = any(isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) for stmt in node.body)
-            if has_attributes:
-                components.append("Attributes")
-        
-        print(f"DEBUG: Identified components: {components}")
-        return components
+        if formatted_examples and not formatted_examples[-1]:
+            formatted_examples.pop()  # Remove the last blank line if it exists
+
+        # Add the Examples: header
+        formatted_examples = [examples_header] + formatted_examples
+
+        log_debug(f"_format_examples output - formatted_examples: {type(formatted_examples)}, {formatted_examples}")
+        return formatted_examples

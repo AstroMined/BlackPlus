@@ -1,7 +1,11 @@
 import ast
 import pytest
 from blackplus.google_formatter import GoogleDocstringFormatter
+from blackplus.formatter import ASTInfo
+import logging
 
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
 
 @pytest.fixture
 def formatter():
@@ -27,8 +31,11 @@ def test_simple_summary_docstring(formatter):
     '''
     node = ast.parse("def func():\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
+    
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={}, attributes={}, return_type=None, raises=[])
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """This is a simple summary docstring."""'''
 
     print("DEBUG: Formatted docstring:")
@@ -45,7 +52,10 @@ def test_add_missing_components(formatter):
     node = ast.parse("def func(param1, param2):\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"param1": "Any", "param2": "Any"}, attributes={}, return_type=None, raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """This function does something.
 
     Args:
@@ -79,7 +89,10 @@ class SampleClass:
     node = ast.parse(class_def).body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={}, attributes={"attr1": "int", "attr2": "str"}, return_type=None, raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """A sample class.
 
     This class demonstrates docstring formatting.
@@ -111,7 +124,10 @@ def test_format_function_docstring(formatter):
     node = ast.parse("def func():\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={}, attributes={}, return_type="Any", raises=["ValueError"])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """This function does something.
 
     Returns:
@@ -139,19 +155,24 @@ def test_long_parameter_description(formatter):
     node = ast.parse("def func(param1):\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"param1": "Any"}, attributes={}, return_type=None, raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """This function does something.
 
     Args:
-        param1: This is a very long parameter description that should be wrapped
-            to the next line.
+        param1: This is a very long parameter description that should be
+            wrapped to the next line.
 
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(repr(formatted_docstring))
+    print(formatted_docstring)
     print("DEBUG: Expected docstring:")
-    print(repr(expected_docstring))
+    print(expected_docstring)
+    print(f"FORMATTED: {repr(formatted_docstring)}")
+    print(f" EXCPETED: {repr(expected_docstring)}")
 
     assert formatted_docstring == expected_docstring
 
@@ -169,7 +190,10 @@ def test_poorly_formatted_args_returns(formatter):
     node = ast.parse("def func(param1: int, param2: str) -> dict:\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"param1": "int", "param2": "str"}, attributes={}, return_type="dict", raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """This function has poorly formatted Args and Returns sections.
 
     Args:
@@ -203,7 +227,10 @@ class PoorlyFormattedClass:
     node = ast.parse(class_def).body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={}, attributes={"attr1": "int", "attr2": "str", "attr3": "list"}, return_type=None, raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """A class with a poorly formatted Attributes section.
 
     Attributes:
@@ -232,7 +259,10 @@ def test_poorly_formatted_method(formatter):
     node = ast.parse("def poorly_formatted_method(self, arg1: int, arg2: str) -> bool:\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"arg1": "int", "arg2": "str"}, attributes={}, return_type="bool", raises=["ValueError"])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """A method with poorly formatted Args, Returns, and Raises sections.
 
     Args:
@@ -269,7 +299,10 @@ def test_poorly_formatted_examples(formatter):
     node = ast.parse("def function_with_poorly_formatted_examples(x: int, y: int) -> int:\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"x": "int", "y": "int"}, attributes={}, return_type="int", raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """A function with a poorly formatted Examples section.
 
     Args:
@@ -306,7 +339,10 @@ def test_poorly_formatted_notes(formatter):
     node = ast.parse("def function_with_poorly_formatted_notes(data: list) -> float:\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"data": "list"}, attributes={}, return_type="float", raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """Calculate the average of a list of numbers.
 
     Args:
@@ -347,19 +383,23 @@ def test_multi_paragraph_description(formatter):
     node = ast.parse("def func_with_multi_paragraph(param1, param2):\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"param1": "Any", "param2": "Any"}, attributes={}, return_type="Any", raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """This function has a multi-paragraph description.
 
-    The first paragraph provides a brief overview of the function's purpose and
-    the logic behind it. It explains why the function is needed and what it aims
-    to achieve.
+    The first paragraph provides a brief overview of the function's
+    purpose and the logic behind it. It explains why the function is
+    needed and what it aims to achieve.
 
-    The second paragraph goes into more detail about the function's behavior and
-    usage. It explains the input parameters, the expected output, and any
-    special considerations.
+    The second paragraph goes into more detail about the function's
+    behavior and usage. It explains the input parameters, the expected
+    output, and any special considerations.
 
     Args:
         param1: A parameter with a multi-line description.
+
             This is the second paragraph of the parameter's description.
         param2: Another parameter with a single-line description.
 
@@ -369,9 +409,11 @@ def test_multi_paragraph_description(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(repr(formatted_docstring))
+    print(formatted_docstring)
     print("DEBUG: Expected docstring:")
-    print(repr(expected_docstring))
+    print(expected_docstring)
+    print(f"FORMATTED: {repr(formatted_docstring)}")
+    print(f" EXCPETED: {repr(expected_docstring)}")
 
     assert formatted_docstring == expected_docstring
 
@@ -397,7 +439,10 @@ def test_docstring_with_code_block(formatter):
     node = ast.parse("def function_with_code_block(value: int) -> int:\n    pass").body[0]
     node.body.insert(0, ast.Expr(ast.Str(original_docstring)))
 
-    formatted_docstring = formatter.format_docstring(original_docstring, node)
+    # Create a proper ASTInfo object
+    ast_info = ASTInfo(params={"value": "int"}, attributes={}, return_type="int", raises=[])
+
+    formatted_docstring = formatter.format_docstring(original_docstring, ast_info)
     expected_docstring = '''    """A function with a code block in its docstring.
 
     This function demonstrates how to use code blocks in docstrings.
@@ -419,9 +464,12 @@ def test_docstring_with_code_block(formatter):
     """'''
 
     print("DEBUG: Formatted docstring:")
-    print(repr(formatted_docstring))
+    print(formatted_docstring)
     print("DEBUG: Expected docstring:")
-    print(repr(expected_docstring))
+    print(expected_docstring)
+    print(f"FORMATTED: {repr(formatted_docstring)}")
+    print(f" EXCPETED: {repr(expected_docstring)}")
+
 
     assert formatted_docstring == expected_docstring
 

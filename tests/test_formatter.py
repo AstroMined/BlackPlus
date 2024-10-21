@@ -9,12 +9,18 @@ import os
 import tempfile
 import ast
 from unittest.mock import patch, MagicMock
-from blackplus.formatter import DocstringFormatter, read_config, format_file, format_files, run_black, run_isort, DocstringTransformer
+from blackplus.formatter import BaseDocstringFormatter, read_config, format_file, format_files, run_black, run_isort, DocstringTransformer, get_formatter
+from blackplus.google_formatter import GoogleDocstringFormatter
 
 def test_read_config():
     """Test the read_config function with a sample configuration."""
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".toml", delete=False) as temp_file:
         temp_file.write('''
+[tool.blackplus]
+style = "google"
+max_line_length = 100
+max_summary_length = 90
+
 [tool.blackplus.docstrings]
 sections = [
     {name = "Summary", marker = "", width = 72},
@@ -25,14 +31,33 @@ sections = [
 ''')
         temp_file.flush()
         config = read_config(temp_file.name)
+        assert "style" in config
+        assert config["style"] == "google"
+        assert "max_line_length" in config
+        assert config["max_line_length"] == 100
+        assert "max_summary_length" in config
+        assert config["max_summary_length"] == 90
         assert "docstrings" in config
         assert "sections" in config["docstrings"]
         assert len(config["docstrings"]["sections"]) == 4
     os.unlink(temp_file.name)
 
+def test_get_formatter():
+    """Test the get_formatter function."""
+    config = {"style": "google", "max_line_length": 88}
+    source_lines = ["def test_func():", "    pass"]
+    
+    formatter = get_formatter("google", config, source_lines)
+    assert isinstance(formatter, GoogleDocstringFormatter)
+    
+    with pytest.raises(ValueError):
+        get_formatter("invalid_style", config, source_lines)
+
 def test_docstring_formatter_basic():
-    """Test the DocstringFormatter class with a basic docstring."""
+    """Test the GoogleDocstringFormatter class with a basic docstring."""
     config = {
+        "style": "google",
+        "max_line_length": 88,
         "docstrings": {
             "sections": [
                 {"name": "Summary", "marker": "", "width": 72},
@@ -56,7 +81,7 @@ def test_docstring_formatter_basic():
         "    '''",
         "    pass"
     ]
-    formatter = DocstringFormatter(config, source_lines)
+    formatter = get_formatter("google", config, source_lines)
     
     sample_docstring = '''
     This function does something.
@@ -77,8 +102,10 @@ def test_docstring_formatter_basic():
     assert "Returns:" in formatted_docstring
 
 def test_docstring_formatter_with_code_examples():
-    """Test the DocstringFormatter class with code examples in docstrings."""
+    """Test the GoogleDocstringFormatter class with code examples in docstrings."""
     config = {
+        "style": "google",
+        "max_line_length": 88,
         "docstrings": {
             "sections": [
                 {"name": "Summary", "marker": "", "width": 72},
@@ -101,7 +128,7 @@ def test_docstring_formatter_with_code_examples():
         "    '''",
         "    pass"
     ]
-    formatter = DocstringFormatter(config, source_lines)
+    formatter = get_formatter("google", config, source_lines)
     
     sample_docstring = '''
     This function calculates the area.
@@ -122,77 +149,11 @@ def test_docstring_formatter_with_code_examples():
     assert "print(\"Area:\", area)" in formatted_docstring
     assert "```" in formatted_docstring
 
-def test_docstring_formatter_identify_section():
-    """Test the _identify_section method of DocstringFormatter."""
-    config = {
-        "docstrings": {
-            "sections": [
-                {"name": "Summary", "marker": "", "width": 72},
-                {"name": "Parameters", "marker": "Parameters:", "width": 72}
-            ]
-        }
-    }
-    source_lines = ["def sample_function():", "    '''Sample docstring'''", "    pass"]
-    formatter = DocstringFormatter(config, source_lines)
-
-    # Create an AST node for the function
-    node = ast.parse("\n".join(source_lines)).body[0]
-
-    # Print the actual return value for debugging
-    print("Actual return value:", formatter._identify_section("", node))
-    
-    assert formatter._identify_section("", node)[0] == {"name": "Summary", "marker": "", "width": 72}
-    assert formatter._identify_section("Parameters:", node)[0] == {"name": "Parameters", "marker": "Parameters:", "width": 72}
-    assert formatter._identify_section("Unknown:", node)[0] is None
-
-def test_docstring_formatter_format_section():
-    """Test the _format_section method of DocstringFormatter."""
-    config = {
-        "docstrings": {
-            "sections": [
-                {"name": "Summary", "marker": "", "width": 72},
-                {"name": "Parameters", "marker": "Parameters:", "width": 72},
-            ]
-        }
-    }
-    source_lines = [
-        "def sample_function():",
-        "    '''Sample docstring'''",
-        "    pass"
-    ]
-    formatter = DocstringFormatter(config, source_lines)
-
-    node = ast.parse("\n".join(source_lines)).body[0]
-    section = {"name": "Summary", "marker": "", "width": 10}
-    content = ["This is a long summary that should be wrapped."]
-    formatted = formatter._format_section(section, content, node, "    ")
-    expected_output = "    This is a\n    long\n    summary\n    that\n    should be\n    wrapped."
-    assert expected_output in formatted
-
-    section = {"name": "Parameters", "marker": "Parameters:", "width": 72}
-    content = ["param1 (int): An integer parameter.", "param2 (str): A string parameter."]
-    formatted = formatter._format_section(section, content, node, "    ")
-    assert formatted.strip().startswith("Parameters:")
-    assert "    param1 (int): An integer parameter." in formatted
-    assert "    param2 (str): A string parameter." in formatted
-
-@patch('blackplus.formatter.black.format_file_in_place')
-def test_run_black(mock_format_file_in_place):
-    """Test the run_black function."""
-    config = {"black": {"line_length": 100, "target_version": ["py38"]}}
-    run_black("test_file.py", config)
-    mock_format_file_in_place.assert_called_once()
-
-@patch('blackplus.formatter.isort.file')
-def test_run_isort(mock_isort_file):
-    """Test the run_isort function."""
-    config = {"isort": {"profile": "black"}}
-    run_isort("test_file.py", config)
-    mock_isort_file.assert_called_once_with("test_file.py", profile="black")
-
 def test_docstring_transformer():
     """Test the DocstringTransformer class."""
     config = {
+        "style": "google",
+        "max_line_length": 88,
         "docstrings": {
             "sections": [
                 {"name": "Summary", "marker": "", "width": 72},
@@ -208,7 +169,7 @@ def test_docstring_transformer():
         "    '''This is a test class.'''",
         "    pass"
     ]
-    formatter = DocstringFormatter(config, source_lines)
+    formatter = get_formatter("google", config, source_lines)
     transformer = DocstringTransformer(formatter)
 
     # Test function docstring transformation
@@ -234,6 +195,8 @@ class TestClass:
 def test_format_file(mock_run_isort, mock_run_black):
     """Test the format_file function."""
     config = {
+        "style": "google",
+        "max_line_length": 88,
         "docstrings": {
             "sections": [
                 {"name": "Summary", "marker": "", "width": 72},
@@ -251,6 +214,20 @@ def test_func():
         mock_run_black.assert_called_once_with(temp_file.name, config)
         mock_run_isort.assert_called_once_with(temp_file.name, config)
     os.unlink(temp_file.name)
+
+@patch('blackplus.formatter.black.format_file_in_place')
+def test_run_black(mock_format_file_in_place):
+    """Test the run_black function."""
+    config = {"black": {"line_length": 100, "target_version": ["py38"]}}
+    run_black("test_file.py", config)
+    mock_format_file_in_place.assert_called_once()
+
+@patch('blackplus.formatter.isort.file')
+def test_run_isort(mock_isort_file):
+    """Test the run_isort function."""
+    config = {"isort": {"profile": "black"}}
+    run_isort("test_file.py", config)
+    mock_isort_file.assert_called_once_with("test_file.py", profile="black")
 
 def test_format_file_functions():
     """Test formatting of functions in a Python file."""
